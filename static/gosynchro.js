@@ -11,4 +11,5 @@ stream.addEventListener("gosynchro/reload", (event) => {
 
 stream.addEventListener("gosynchro/filesystem", (event) => {
     console.log(`received filesystem event: ${JSON.stringify(event.data)}`);
+    window.location.reload();
 });
