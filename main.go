@@ -1,7 +1,10 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"html/template"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,10 +21,29 @@ import (
 
 var (
 	version = "development"
-	commit  = ""
-	date    = ""
-	buildBy = "user"
+	commit  = "none"
+	date    = "none"
+	builtBy = "user"
+
+	//go:embed all:static/*
+	staticFS embed.FS
+
+	//go:embed all:templates/*
+	templateFS embed.FS
 )
+
+var StaticFS fs.FS
+var ErrorTemplate *template.Template
+
+func init() {
+	ErrorTemplate = template.Must(template.ParseFS(templateFS, "templates/error.gohtml"))
+
+	var err error
+	StaticFS, err = fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err)
+	}
+}
 
 type Config struct {
 	remote   string
@@ -62,19 +84,18 @@ func main() {
 	var rawConfig Config
 	var log zerolog.Logger
 
-	compiled, err := time.Parse(time.RFC3339, date)
-	if err != nil {
-		panic(err)
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Printf("version: %s\ncommit: %s\ncompiled: %s\nbuilt by: %s\n", c.App.Version, c.App.Metadata["commit"], c.App.Metadata["compiled"], c.App.Metadata["builtBy"])
 	}
 
 	app := &cli.App{
-		Name:     "gosynchro",
-		Usage:    "A tool to synchronize browser windows",
-		Version:  version,
-		Compiled: compiled,
+		Name:    "gosynchro",
+		Usage:   "A tool to synchronize browser windows",
+		Version: version,
 		Metadata: map[string]interface{}{
-			"commit":  commit,
-			"builtBy": buildBy,
+			"commit":   commit,
+			"builtBy":  builtBy,
+			"compiled": date,
 		},
 		Flags: []cli.Flag{
 			&cli.IntFlag{
@@ -148,8 +169,12 @@ func main() {
 						return cli.Exit(err, 1)
 					}
 
-					p := &proxy.Proxy{
-						Config: cfg,
+					cfg.StaticFS = StaticFS
+					cfg.ErrorTemplate = ErrorTemplate
+
+					p, err := proxy.NewFromConfig(cfg)
+					if err != nil {
+						return cli.Exit(err, 1)
 					}
 
 					if err := p.Start(context.Context); err != nil {

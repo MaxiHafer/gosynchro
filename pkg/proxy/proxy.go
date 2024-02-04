@@ -7,62 +7,73 @@ import (
 	"net/url"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"golang.org/x/net/context"
 
-	"github.com/maxihafer/gosynchro"
+	"github.com/maxihafer/gosynchro/pkg/logger"
 	"github.com/maxihafer/gosynchro/pkg/notifier"
 	"github.com/maxihafer/gosynchro/pkg/stream"
 )
 
-type Proxy struct {
-	*Config
-	manualNotifier *notifier.Manual
-}
+func NewFromConfig(c *Config) (*Proxy, error) {
+	p := &Proxy{Config: c}
 
-func (p *Proxy) Start(ctx context.Context) error {
-	if p.Config.Debug {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
-	remote, err := url.Parse(p.Config.Remote)
+	remote, err := url.Parse(c.Remote)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("invalid remote '%s': %w", c.Remote, err)
 	}
+	p.remote = remote
+	p.listenAddr = net.JoinHostPort("", fmt.Sprintf("%d", c.Port))
 
 	p.manualNotifier = notifier.NewManual()
 
-	aggregateNotifier := notifier.NewAggregate(
-		p.manualNotifier,
-	)
+	p.aggregateNotifier = notifier.NewAggregate(p.manualNotifier)
 
-	if len(p.Config.Files) > 0 {
-		fs, err := notifier.NewFileSystem(p.Config.Files...)
+	if len(c.Files) > 0 {
+		fs, err := notifier.NewFileSystem(c.Files...)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		aggregateNotifier.Add(fs)
+		p.aggregateNotifier.Add(fs)
 	}
 
-	stream := stream.NewServer(aggregateNotifier.Notify(ctx))
+	return p, nil
+}
 
-	engine := gin.Default()
+type Proxy struct {
+	*Config
+
+	aggregateNotifier *notifier.Aggregate
+	manualNotifier    *notifier.Manual
+	remote            *url.URL
+	listenAddr        string
+
+	streamServer *stream.Server
+}
+
+func (p *Proxy) Start(ctx context.Context) error {
+	gin.SetMode(gin.ReleaseMode)
+
+	log := zerolog.Ctx(ctx)
+
+	stream := stream.NewServer(p.aggregateNotifier.Notify(ctx))
+
+	engine := gin.New()
+	engine.Use(logger.StructuredLoggingMiddleware(log))
+	engine.Use(gin.Recovery())
 	engine.SetTrustedProxies(nil)
 
-	engine.GET("/gosynchro", stream.StreamEvents())
-	engine.StaticFS("/gosynchro/static", http.FS(gosynchro.StaticFS))
+	engine.GET("/gosynchro", stream.StreamEvents)
+	engine.StaticFS("/gosynchro/static", http.FS(p.StaticFS))
 	engine.GET(
 		"/gosynchro/reload", func(c *gin.Context) {
 			p.manualNotifier.Reload()
 			c.JSON(http.StatusOK, gin.H{"message": "Reloaded"})
 		},
 	)
+	engine.NoRoute(p.proxyHandler)
 
-	engine.NoRoute(p.proxyHandler(remote))
-
-	addr := net.JoinHostPort("", fmt.Sprintf("%d", p.Port))
-	if err := engine.Run(addr); err != nil {
+	if err := engine.Run(p.listenAddr); err != nil {
 		return err
 	}
 

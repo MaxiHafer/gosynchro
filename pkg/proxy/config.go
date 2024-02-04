@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"fmt"
+	"html/template"
+	"io/fs"
 	"net/url"
 )
 
@@ -10,6 +12,9 @@ type Config struct {
 	Port   int
 	Debug  bool
 	Files  []string
+
+	StaticFS      fs.FS
+	ErrorTemplate *template.Template
 }
 
 func (c *Config) Validate() error {

@@ -58,29 +58,27 @@ func ClientStreamFromContext(c *gin.Context) (chan string, bool) {
 	return clientChan, true
 }
 
-func (s *Server) StreamEvents() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		c.Header("Transfer-Encoding", "chunked")
+func (s *Server) StreamEvents(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Transfer-Encoding", "chunked")
 
-		client := make(chan event.Event)
-		s.NewClients <- client
-		defer func() {
-			s.ClosedClients <- client
-		}()
+	client := make(chan event.Event)
+	s.NewClients <- client
+	defer func() {
+		s.ClosedClients <- client
+	}()
 
-		c.Stream(
-			func(w io.Writer) bool {
-				if msg, ok := <-client; ok {
-					writeEvent(c, msg)
-					return true
-				}
-				return false
-			},
-		)
-	}
+	c.Stream(
+		func(w io.Writer) bool {
+			if msg, ok := <-client; ok {
+				writeEvent(c, msg)
+				return true
+			}
+			return false
+		},
+	)
 }
 
 func writeEvent(c *gin.Context, event event.Event) {

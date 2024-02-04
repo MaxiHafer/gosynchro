@@ -1,11 +1,11 @@
 .PHONY: dev
 dev:
-	go run cmd/gosynchro/main.go --verbose proxy --remote http://localhost:8080
+	go run main.go --verbose proxy --remote http://localhost:8080
 
 .PHONY: build
 build:
-	go build -o bin/gosynchro cmd/gosynchro/main.go
+	go build -o bin/gosynchro .
 
 .PHONY: run
-run:
+run: build
 	./bin/gosynchro --verbose proxy --remote http://localhost:8080

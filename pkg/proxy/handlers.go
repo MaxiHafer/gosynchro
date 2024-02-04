@@ -7,24 +7,20 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/net/html"
 
-	"github.com/maxihafer/gosynchro"
 	"github.com/maxihafer/gosynchro/templates"
 )
 
-func (p *Proxy) proxyHandler(remote *url.URL) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		proxy := httputil.NewSingleHostReverseProxy(remote)
-		proxy.ErrorHandler = p.proxyErrorHandler
-		proxy.ModifyResponse = transformHTTPResponse
+func (p *Proxy) proxyHandler(c *gin.Context) {
+	proxy := httputil.NewSingleHostReverseProxy(p.remote)
+	proxy.ErrorHandler = p.proxyErrorHandler
+	proxy.ModifyResponse = transformHTTPResponse
 
-		proxy.ServeHTTP(c.Writer, c.Request)
-	}
+	proxy.ServeHTTP(c.Writer, c.Request)
 }
 
 func (p *Proxy) proxyErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
@@ -37,7 +33,7 @@ func (p *Proxy) proxyErrorHandler(w http.ResponseWriter, r *http.Request, err er
 		data.Title = fmt.Sprintf("Could not connect to %s", p.Config.Remote)
 	}
 
-	_ = gosynchro.ErrorTemplate.Execute(w, data)
+	_ = p.ErrorTemplate.Execute(w, data)
 }
 
 func transformHTTPResponse(r *http.Response) error {

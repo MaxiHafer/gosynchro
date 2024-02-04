@@ -22,7 +22,7 @@ builds:
       - linux
       - windows
       - darwin
-    main: ./cmd/gosynchro
+    main: main.go
 
 archives:
   - format: tar.gz
